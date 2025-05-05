@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>assignment</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <h1>📝 To-Do App</h1>
+
+    <form id="taskForm">
+      <input type="text" id="description" placeholder="Task description" required>
+
+      <select id="priority">
+        <option value="Low">Low</option>
+        <option value="Normal" selected>Normal</option>
+        <option value="High">High</option>
+      </select>
+
+      <input type="date" id="dueDate">
+      <button type="submit">Add Task</button>
+    </form>
+
+    <div id="message" class="message"></div> <ul id="taskList"></ul>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
