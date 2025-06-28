@@ -24,7 +24,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Delete task
   async function deleteTask(id) {
     try {
-      const response = await fetch(`http://localhost:3000/tasks/${id}`, { method: 'DELETE' });
+      const response = await fetch(`api/tasks/${id}`, { method: 'DELETE' });
 
       if (!response.ok) throw new Error(`Error deleting task: ${response.statusText}`);
 
@@ -40,7 +40,7 @@ document.addEventListener('DOMContentLoaded', () => {
   async function fetchTasks() {
     try {
       taskList.innerHTML = '<li>Loading tasks...</li>'; // Loading indicator
-      const response = await fetch('http://localhost:3000/tasks');
+      const response = await fetch('api/tasks');
 
       console.log(response)
       
@@ -81,7 +81,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     try {
-      const response = await fetch('http://localhost:3000/tasks', {
+      const response = await fetch('api/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(task),
