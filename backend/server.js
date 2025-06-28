@@ -10,7 +10,7 @@ const port = process.env.PORT || 3000; // Use environment port or default
 dotenv.config();
 
 // ✅ CORS setup — allow specific origin from .env
-const allowedOrigin = process.env.ALLOWED_ORIGIN || 'http://localhost:8080';
+const allowedOrigin = process.env.ALLOWED_ORIGIN ;
 app.use(cors({
   origin: allowedOrigin,
   credentials: true
