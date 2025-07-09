@@ -1,0 +1,59 @@
+pipeline {
+    agent any
+
+    environment {
+        SSH_CRED_ID = 'todo-auto-ssh'           // Jenkins SSH credential ID
+        UAT_HOST = 'UAT-HOST-TODO'             // UAT VM IP or hostname
+        UAT_USER = 'UAT-USERNAME-TODO'         // VM SSH user
+        FRONTEND_REMOTE_PATH = '/usr/share/nginx/html/frontend'
+        BACKEND_PATH = '/TODO-APP/backend'
+        DB_MIGRATION_PATH = '/TODO-APP/init-db'
+    }
+
+    stages {
+        stage('Deploy Backend') {
+            steps {
+                sshagent(credentials: ["${env.SSH_CRED_ID}"]) {
+                    sh """
+                    ssh -o StrictHostKeyChecking=no ${UAT_USER}@${UAT_HOST} << EOF
+                    cd ${BACKEND_PATH}
+                    git pull origin main
+                    npm install
+                    pm2 restart backend-app
+                    EOF
+                    """
+                }
+            }
+        }
+
+        stage('Run DB Migration') {
+            steps {
+                sshagent(credentials: ["${env.SSH_CRED_ID}"]) {
+                    sh """
+                        ssh -o StrictHostKeyChecking=no ${UAT_USER}@${UAT_HOST} << EOF
+                        cd /TODO-APP/init-db
+                        ./run_migrations.sh
+                        EOF
+                        """
+                }
+            }
+        }
+
+        stage('Deploy Frontend') {
+            steps {
+                sshagent(credentials: ["${env.SSH_CRED_ID}"]) {
+                    sh """
+                    # Clean old frontend files
+                    ssh -o StrictHostKeyChecking=no ${UAT_USER}@${UAT_HOST} "rm -rf ${FRONTEND_REMOTE_PATH}/*"
+
+                    # Copy new frontend files (assumes files are in Jenkins workspace root or adjust path accordingly)
+                    scp -r -o StrictHostKeyChecking=no * ${UAT_USER}@${UAT_HOST}:${FRONTEND_REMOTE_PATH}/
+
+                    # Reload Nginx to apply changes
+                    ssh -o StrictHostKeyChecking=no ${UAT_USER}@${UAT_HOST} "sudo systemctl reload nginx"
+                    """
+                }
+            }
+        }
+    }
+}
