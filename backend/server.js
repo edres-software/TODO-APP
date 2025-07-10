@@ -92,6 +92,12 @@ app.delete('/tasks/:id', async (req, res) => {
   }
 });
 
+// ✅ Simple health check endpoint
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+
 // ✅ Start server
 app.listen(port, () => {
   console.log(`✅ Server running at http://localhost:${port}`);
