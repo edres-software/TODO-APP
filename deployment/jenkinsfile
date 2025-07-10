@@ -10,6 +10,9 @@ pipeline {
         REPO_URL = 'https://github.com/edres-software/TODO-APP.git'
     }
 
+    stages {
+       
+
         stage('Validate Environment') {
             steps {
                 echo "Target Host: ${UAT_HOST}"
