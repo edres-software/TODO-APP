@@ -1,13 +1,13 @@
 pipeline {
     agent any
-    
+
     environment {
         SSH_CRED_ID = 'todo-auto-ssh'
         FRONTEND_REMOTE_PATH = '/usr/share/nginx/html/frontend'
         BACKEND_PATH = '/TODO-APP/backend'
         DB_MIGRATION_PATH = '/TODO-APP/init-db'
     }
-    
+
     stages {
         stage('Checkout') {
             steps {
@@ -15,26 +15,23 @@ pipeline {
                 checkout scm
             }
         }
-        
+
         stage('Validate Environment') {
             steps {
                 withCredentials([
                     string(credentialsId: 'UAT-HOST-TODO', variable: 'UAT_HOST'),
                     string(credentialsId: 'UAT-USERNAME-TODO', variable: 'UAT_USER')
                 ]) {
-                    echo "Validating deployment environment..."
-                    sh """
-                        echo "Target Host: ${UAT_HOST}"
-                        echo "Username: ${UAT_USER}"
-                        echo "SSH Credential ID: ${SSH_CRED_ID}"
-                        echo "Backend Path: ${BACKEND_PATH}"
-                        echo "Frontend Path: ${FRONTEND_REMOTE_PATH}"
-                        echo "DB Migration Path: ${DB_MIGRATION_PATH}"
-                    """
+                    echo "Target Host: ${UAT_HOST}"
+                    echo "Username: ${UAT_USER}"
+                    echo "SSH Credential ID: ${SSH_CRED_ID}"
+                    echo "Backend Path: ${BACKEND_PATH}"
+                    echo "Frontend Path: ${FRONTEND_REMOTE_PATH}"
+                    echo "DB Migration Path: ${DB_MIGRATION_PATH}"
                 }
             }
         }
-        
+
         stage('Test Connection') {
             steps {
                 withCredentials([
@@ -43,20 +40,19 @@ pipeline {
                 ]) {
                     sshagent(credentials: ["${env.SSH_CRED_ID}"]) {
                         sh """
-                            echo "Testing SSH connection to ${UAT_HOST}..."
-                            ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 ${UAT_USER}@${UAT_HOST} '
+                            ssh -o StrictHostKeyChecking=no ${UAT_USER}@${UAT_HOST} '
                                 echo "SSH connection successful!"
-                                echo "Server hostname: \$(hostname)"
-                                echo "Current user: \$(whoami)"
-                                echo "Current directory: \$(pwd)"
-                                echo "Server time: \$(date)"
+                                hostname
+                                whoami
+                                pwd
+                                date
                             '
                         """
                     }
                 }
             }
         }
-        
+
         stage('Deploy Backend') {
             steps {
                 withCredentials([
@@ -65,36 +61,26 @@ pipeline {
                 ]) {
                     sshagent(credentials: ["${env.SSH_CRED_ID}"]) {
                         sh """
-                            echo "🚀 Starting backend deployment..."
-                            ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 ${UAT_USER}@${UAT_HOST} '
+                            ssh -o StrictHostKeyChecking=no ${UAT_USER}@${UAT_HOST} '
                                 set -e
-                                echo "📁 Navigating to backend directory..."
-                                cd ${BACKEND_PATH} || (echo "❌ Backend directory not found: ${BACKEND_PATH}" && exit 1)
-                                
-                                echo "🔄 Pulling latest code from repository..."
-                                git pull origin main || (echo "❌ Git pull failed" && exit 1)
-                                
-                                echo "📦 Installing/updating dependencies..."
-                                npm install || (echo "❌ NPM install failed" && exit 1)
-                                
-                                echo "🔧 Managing PM2 process..."
+                                cd ${BACKEND_PATH} || (echo "Backend directory not found" && exit 1)
+                                git remote set-url origin https://github.com/edres-software/TODO-APP.git
+                                git reset --hard
+                                git clean -fd
+                                git pull origin main
+                                npm install
                                 if pm2 list | grep -q "backend-app"; then
-                                    echo "Restarting existing PM2 process..."
                                     pm2 restart backend-app
                                 else
-                                    echo "Starting new PM2 process..."
                                     pm2 start app.js --name backend-app
                                 fi
-                                
-                                echo "✅ Backend deployment completed successfully!"
-                                pm2 status backend-app
                             '
                         """
                     }
                 }
             }
         }
-        
+
         stage('Run DB Migration') {
             steps {
                 withCredentials([
@@ -103,26 +89,18 @@ pipeline {
                 ]) {
                     sshagent(credentials: ["${env.SSH_CRED_ID}"]) {
                         sh """
-                            echo "🗄️ Starting database migration..."
-                            ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 ${UAT_USER}@${UAT_HOST} '
+                            ssh -o StrictHostKeyChecking=no ${UAT_USER}@${UAT_HOST} '
                                 set -e
-                                echo "📁 Navigating to migration directory..."
-                                cd ${DB_MIGRATION_PATH} || (echo "❌ Migration directory not found: ${DB_MIGRATION_PATH}" && exit 1)
-                                
-                                echo "🔧 Making migration script executable..."
+                                cd ${DB_MIGRATION_PATH} || (echo "Migration directory not found" && exit 1)
                                 chmod +x run_migrations.sh
-                                
-                                echo "🚀 Running database migrations..."
-                                ./run_migrations.sh || (echo "❌ Database migration failed" && exit 1)
-                                
-                                echo "✅ Database migration completed successfully!"
+                                ./run_migrations.sh
                             '
                         """
                     }
                 }
             }
         }
-        
+
         stage('Deploy Frontend') {
             steps {
                 withCredentials([
@@ -131,41 +109,15 @@ pipeline {
                 ]) {
                     sshagent(credentials: ["${env.SSH_CRED_ID}"]) {
                         sh """
-                            echo "🌐 Starting frontend deployment..."
-                            
-                            echo "🗑️ Cleaning old frontend files..."
-                            ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 ${UAT_USER}@${UAT_HOST} "
-                                rm -rf ${FRONTEND_REMOTE_PATH}/*
-                                echo 'Old frontend files removed'
-                            "
-                            
-                            echo "📁 Checking if frontend directory exists in workspace..."
-                            if [ -d "frontend" ]; then
-                                echo "✅ Frontend directory found"
-                                ls -la frontend/
-                            else
-                                echo "❌ Frontend directory not found in workspace"
-                                echo "Available files/directories:"
-                                ls -la
-                                exit 1
-                            fi
-                            
-                            echo "📤 Copying new frontend files..."
-                            scp -r -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null frontend/* ${UAT_USER}@${UAT_HOST}:${FRONTEND_REMOTE_PATH}/
-                            
-                            echo "🔄 Reloading Nginx..."
-                            ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 ${UAT_USER}@${UAT_HOST} "
-                                systemctl reload nginx || (echo '❌ Nginx reload failed' && exit 1)
-                                echo '✅ Nginx reloaded successfully'
-                            "
-                            
-                            echo "✅ Frontend deployment completed successfully!"
+                            ssh -o StrictHostKeyChecking=no ${UAT_USER}@${UAT_HOST} 'rm -rf ${FRONTEND_REMOTE_PATH}/*'
+                            scp -r -o StrictHostKeyChecking=no frontend/* ${UAT_USER}@${UAT_HOST}:${FRONTEND_REMOTE_PATH}/
+                            ssh -o StrictHostKeyChecking=no ${UAT_USER}@${UAT_HOST} 'systemctl reload nginx'
                         """
                     }
                 }
             }
         }
-        
+
         stage('Health Check') {
             steps {
                 withCredentials([
@@ -174,21 +126,11 @@ pipeline {
                 ]) {
                     sshagent(credentials: ["${env.SSH_CRED_ID}"]) {
                         sh """
-                            echo "🔍 Performing post-deployment health checks..."
-                            ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 ${UAT_USER}@${UAT_HOST} '
-                                echo "Checking PM2 processes..."
+                            ssh -o StrictHostKeyChecking=no ${UAT_USER}@${UAT_HOST} '
                                 pm2 status
-                                
-                                echo "Checking Nginx status..."
                                 systemctl status nginx --no-pager
-                                
-                                echo "Checking if backend is responding..."
                                 curl -f http://localhost:3000/health || echo "Backend health check failed"
-                                
-                                echo "Checking frontend files..."
                                 ls -la ${FRONTEND_REMOTE_PATH}
-                                
-                                echo "✅ Health check completed!"
                             '
                         """
                     }
@@ -196,27 +138,17 @@ pipeline {
             }
         }
     }
-    
+
     post {
         always {
             echo "🏁 Deployment pipeline completed"
             echo "Pipeline execution time: \${currentBuild.durationString}"
         }
         success {
-            echo "✅ All deployment stages completed successfully!"
-            echo "🎉 Your TODO application has been deployed to UAT environment"
+            echo "✅ Deployment succeeded!"
         }
         failure {
-            echo "❌ Deployment pipeline failed!"
-            echo "🔍 Please check the logs above for error details"
-            echo "💡 Common issues to check:"
-            echo "   - SSH key authentication"
-            echo "   - Server accessibility"
-            echo "   - Directory permissions"
-            echo "   - Service configurations"
-        }
-        unstable {
-            echo "⚠️ Pipeline completed with warnings"
+            echo "❌ Deployment failed! Check logs for details."
         }
     }
 }
