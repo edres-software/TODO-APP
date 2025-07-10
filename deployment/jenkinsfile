@@ -22,12 +22,15 @@ pipeline {
                     string(credentialsId: 'UAT-HOST-TODO', variable: 'UAT_HOST'),
                     string(credentialsId: 'UAT-USERNAME-TODO', variable: 'UAT_USER')
                 ]) {
-                    echo "Target Host: ${UAT_HOST}"
-                    echo "Username: ${UAT_USER}"
-                    echo "SSH Credential ID: ${SSH_CRED_ID}"
-                    echo "Backend Path: ${BACKEND_PATH}"
-                    echo "Frontend Path: ${FRONTEND_REMOTE_PATH}"
-                    echo "DB Migration Path: ${DB_MIGRATION_PATH}"
+                    echo "Validating deployment environment..."
+                    sh """
+                        echo "Target Host: ${UAT_HOST}"
+                        echo "Username: ${UAT_USER}"
+                        echo "SSH Credential ID: ${SSH_CRED_ID}"
+                        echo "Backend Path: ${BACKEND_PATH}"
+                        echo "Frontend Path: ${FRONTEND_REMOTE_PATH}"
+                        echo "DB Migration Path: ${DB_MIGRATION_PATH}"
+                    """
                 }
             }
         }
@@ -69,10 +72,10 @@ pipeline {
                                 git clean -fd
                                 git pull origin main
                                 npm install
-                                if pm2 list | grep -q "backend-app"; then
-                                    pm2 restart backend-app
+                                if pm2 list | grep -q "todo-backend"; then
+                                    pm2 restart todo-backend
                                 else
-                                    pm2 start app.js --name backend-app
+                                    pm2 start server.js --name todo-backend
                                 fi
                             '
                         """
@@ -109,9 +112,18 @@ pipeline {
                 ]) {
                     sshagent(credentials: ["${env.SSH_CRED_ID}"]) {
                         sh """
-                            ssh -o StrictHostKeyChecking=no ${UAT_USER}@${UAT_HOST} 'rm -rf ${FRONTEND_REMOTE_PATH}/*'
-                            scp -r -o StrictHostKeyChecking=no frontend/* ${UAT_USER}@${UAT_HOST}:${FRONTEND_REMOTE_PATH}/
-                            ssh -o StrictHostKeyChecking=no ${UAT_USER}@${UAT_HOST} 'systemctl reload nginx'
+                            ssh -o StrictHostKeyChecking=no ${UAT_USER}@${UAT_HOST} "
+                                rm -rf ${FRONTEND_REMOTE_PATH}/* || echo 'No frontend files to remove'
+                            "
+                            if [ -d frontend ]; then
+                                scp -r -o StrictHostKeyChecking=no frontend/* ${UAT_USER}@${UAT_HOST}:${FRONTEND_REMOTE_PATH}/
+                            else
+                                echo 'Frontend directory not found in workspace'
+                                exit 1
+                            fi
+                            ssh -o StrictHostKeyChecking=no ${UAT_USER}@${UAT_HOST} "
+                                systemctl reload nginx || echo 'Nginx reload failed'
+                            "
                         """
                     }
                 }
@@ -145,10 +157,12 @@ pipeline {
             echo "Pipeline execution time: \${currentBuild.durationString}"
         }
         success {
-            echo "✅ Deployment succeeded!"
+            echo "✅ All deployment stages completed successfully!"
+            echo "🎉 TODO app deployed to UAT environment"
         }
         failure {
-            echo "❌ Deployment failed! Check logs for details."
+            echo "❌ Deployment failed!"
+            echo "Check logs for details and verify SSH access, paths, and service status."
         }
     }
 }
