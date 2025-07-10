@@ -2,167 +2,105 @@ pipeline {
     agent any
 
     environment {
-        SSH_CRED_ID = 'todo-auto-ssh'
-        FRONTEND_REMOTE_PATH = '/usr/share/nginx/html/frontend'
+        UAT_HOST = credentials('UAT-HOST-TODO')      // Your server IP or hostname
+        UAT_USER = credentials('UAT-USERNAME-TODO')  // SSH user on the server
+        SSH_CRED_ID = 'todo-auto-ssh'                 // Jenkins SSH credential ID
         BACKEND_PATH = '/TODO-APP/backend'
-        DB_MIGRATION_PATH = '/TODO-APP/init-db'
+        FRONTEND_PATH = '/usr/share/nginx/html/frontend'
+        REPO_URL = 'https://github.com/edres-software/TODO-APP.git'
     }
 
     stages {
         stage('Checkout') {
             steps {
-                echo "Checking out code from repository..."
-                checkout scm
+                checkout([$class: 'GitSCM',
+                    branches: [[name: 'main']],
+                    userRemoteConfigs: [[url: REPO_URL, credentialsId: SSH_CRED_ID]]
+                ])
             }
         }
 
         stage('Validate Environment') {
             steps {
-                withCredentials([
-                    string(credentialsId: 'UAT-HOST-TODO', variable: 'UAT_HOST'),
-                    string(credentialsId: 'UAT-USERNAME-TODO', variable: 'UAT_USER')
-                ]) {
-                    echo "Validating deployment environment..."
-                    sh """
-                        echo "Target Host: ${UAT_HOST}"
-                        echo "Username: ${UAT_USER}"
-                        echo "SSH Credential ID: ${SSH_CRED_ID}"
-                        echo "Backend Path: ${BACKEND_PATH}"
-                        echo "Frontend Path: ${FRONTEND_REMOTE_PATH}"
-                        echo "DB Migration Path: ${DB_MIGRATION_PATH}"
-                    """
-                }
+                echo "Target Host: ${UAT_HOST}"
+                echo "Username: ${UAT_USER}"
+                echo "Backend Path: ${BACKEND_PATH}"
+                echo "Frontend Path: ${FRONTEND_PATH}"
             }
         }
 
-        stage('Test Connection') {
+        stage('Test SSH Connection') {
             steps {
-                withCredentials([
-                    string(credentialsId: 'UAT-HOST-TODO', variable: 'UAT_HOST'),
-                    string(credentialsId: 'UAT-USERNAME-TODO', variable: 'UAT_USER')
-                ]) {
-                    sshagent(credentials: ["${env.SSH_CRED_ID}"]) {
-                        sh """
-                            ssh -o StrictHostKeyChecking=no ${UAT_USER}@${UAT_HOST} '
-                                echo "SSH connection successful!"
-                                hostname
-                                whoami
-                                pwd
-                                date
-                            '
-                        """
-                    }
+                sshagent(credentials: [SSH_CRED_ID]) {
+                    sh """
+                    ssh -o StrictHostKeyChecking=no ${UAT_USER}@${UAT_HOST} '
+                        echo "SSH connection successful!"
+                        hostname
+                        whoami
+                        pwd
+                        date
+                    '
+                    """
                 }
             }
         }
 
         stage('Deploy Backend') {
             steps {
-                withCredentials([
-                    string(credentialsId: 'UAT-HOST-TODO', variable: 'UAT_HOST'),
-                    string(credentialsId: 'UAT-USERNAME-TODO', variable: 'UAT_USER')
-                ]) {
-                    sshagent(credentials: ["${env.SSH_CRED_ID}"]) {
-                        sh """
-                            ssh -o StrictHostKeyChecking=no ${UAT_USER}@${UAT_HOST} '
-                                set -e
-                                cd ${BACKEND_PATH} || (echo "Backend directory not found" && exit 1)
-                                git remote set-url origin https://github.com/edres-software/TODO-APP.git
-                                git reset --hard
-                                git clean -fd
-                                git pull origin main
-                                npm install
-                                if pm2 list | grep -q "todo-backend"; then
-                                    pm2 restart todo-backend
-                                else
-                                    pm2 start server.js --name todo-backend
-                                fi
-                            '
-                        """
-                    }
-                }
-            }
-        }
-
-        stage('Run DB Migration') {
-            steps {
-                withCredentials([
-                    string(credentialsId: 'UAT-HOST-TODO', variable: 'UAT_HOST'),
-                    string(credentialsId: 'UAT-USERNAME-TODO', variable: 'UAT_USER')
-                ]) {
-                    sshagent(credentials: ["${env.SSH_CRED_ID}"]) {
-                        sh """
-                            ssh -o StrictHostKeyChecking=no ${UAT_USER}@${UAT_HOST} '
-                                set -e
-                                cd ${DB_MIGRATION_PATH} || (echo "Migration directory not found" && exit 1)
-                                chmod +x run_migrations.sh
-                                ./run_migrations.sh
-                            '
-                        """
-                    }
+                sshagent(credentials: [SSH_CRED_ID]) {
+                    sh """
+                    ssh -o StrictHostKeyChecking=no ${UAT_USER}@${UAT_HOST} '
+                        set -e
+                        cd ${BACKEND_PATH} || (echo "Backend directory not found" && exit 1)
+                        git remote set-url origin ${REPO_URL}
+                        git reset --hard
+                        git clean -fd
+                        git pull origin main
+                        npm install
+                        if pm2 list | grep -q "todo-backend"; then
+                            pm2 restart todo-backend
+                        else
+                            pm2 start server.js --name todo-backend
+                        fi
+                    '
+                    """
                 }
             }
         }
 
         stage('Deploy Frontend') {
             steps {
-                withCredentials([
-                    string(credentialsId: 'UAT-HOST-TODO', variable: 'UAT_HOST'),
-                    string(credentialsId: 'UAT-USERNAME-TODO', variable: 'UAT_USER')
-                ]) {
-                    sshagent(credentials: ["${env.SSH_CRED_ID}"]) {
-                        sh """
-                            ssh -o StrictHostKeyChecking=no ${UAT_USER}@${UAT_HOST} "
-                                rm -rf ${FRONTEND_REMOTE_PATH}/* || echo 'No frontend files to remove'
-                            "
-                            if [ -d frontend ]; then
-                                scp -r -o StrictHostKeyChecking=no frontend/* ${UAT_USER}@${UAT_HOST}:${FRONTEND_REMOTE_PATH}/
-                            else
-                                echo 'Frontend directory not found in workspace'
-                                exit 1
-                            fi
-                            ssh -o StrictHostKeyChecking=no ${UAT_USER}@${UAT_HOST} "
-                                systemctl reload nginx || echo 'Nginx reload failed'
-                            "
-                        """
-                    }
+                sshagent(credentials: [SSH_CRED_ID]) {
+                    sh """
+                    ssh -o StrictHostKeyChecking=no ${UAT_USER}@${UAT_HOST} '
+                        set -e
+                        rm -rf ${FRONTEND_PATH}/*
+                        cp -r /TODO-APP/frontend/dist/* ${FRONTEND_PATH}/
+                    '
+                    """
                 }
             }
         }
 
         stage('Health Check') {
             steps {
-                withCredentials([
-                    string(credentialsId: 'UAT-HOST-TODO', variable: 'UAT_HOST'),
-                    string(credentialsId: 'UAT-USERNAME-TODO', variable: 'UAT_USER')
-                ]) {
-                    sshagent(credentials: ["${env.SSH_CRED_ID}"]) {
-                        sh """
-                            ssh -o StrictHostKeyChecking=no ${UAT_USER}@${UAT_HOST} '
-                                pm2 status
-                                systemctl status nginx --no-pager
-                                curl -f http://localhost:3000/health || echo "Backend health check failed"
-                                ls -la ${FRONTEND_REMOTE_PATH}
-                            '
-                        """
-                    }
+                sshagent(credentials: [SSH_CRED_ID]) {
+                    sh """
+                    ssh -o StrictHostKeyChecking=no ${UAT_USER}@${UAT_HOST} '
+                        curl -f http://localhost:3000/health || (echo "Health check failed!" && exit 1)
+                    '
+                    """
                 }
             }
         }
     }
 
     post {
-        always {
-            echo "🏁 Deployment pipeline completed"
-            echo "Pipeline execution time: \${currentBuild.durationString}"
-        }
         success {
-            echo "✅ All deployment stages completed successfully!"
-            echo "🎉 TODO app deployed to UAT environment"
+            echo "✅ Deployment succeeded!"
         }
         failure {
-            echo "❌ Deployment failed!"
-            echo "Check logs for details and verify SSH access, paths, and service status."
+            echo "❌ Deployment failed! Check logs for details."
         }
     }
 }
