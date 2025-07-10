@@ -10,16 +10,6 @@ pipeline {
         REPO_URL = 'https://github.com/edres-software/TODO-APP.git'
     }
 
-    stages {
-        stage('Checkout') {
-            steps {
-                checkout([$class: 'GitSCM',
-                    branches: [[name: 'main']],
-                    userRemoteConfigs: [[url: REPO_URL, credentialsId: SSH_CRED_ID]]
-                ])
-            }
-        }
-
         stage('Validate Environment') {
             steps {
                 echo "Target Host: ${UAT_HOST}"
