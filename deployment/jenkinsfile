@@ -75,7 +75,7 @@ pipeline {
                     ssh -o StrictHostKeyChecking=no ${UAT_USER}@${UAT_HOST} '
                         set -e
                         rm -rf ${FRONTEND_PATH}/*
-                        cp -r /TODO-APP/frontend/dist/* ${FRONTEND_PATH}/
+                        cp -r /TODO-APP/frontend/* ${FRONTEND_PATH}/
                     '
                     """
                 }
